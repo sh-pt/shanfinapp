@@ -55,7 +55,8 @@ if ticker:
             # Visualization
             fig = go.Figure()
 
-            # Bands (No Legend)
+            # 1. Bands (Background) - No Legend
+            # We add them individually to avoid the syntax error from before
             fig.add_trace(
                 go.Scatter(x=df_anchor.index, y=df_anchor['Lower2'], mode='lines', line=dict(width=0), showlegend=False,
                            hoverinfo='skip'))
@@ -69,7 +70,7 @@ if ticker:
                 go.Scatter(x=df_anchor.index, y=df_anchor['Upper1'], mode='lines', line=dict(width=0), fill='tonexty',
                            fillcolor='rgba(100, 100, 250, 0.2)', showlegend=False, hoverinfo='skip'))
 
-            # Lines
+            # 2. Main Lines
             fig.add_trace(
                 go.Scatter(x=df_anchor.index, y=df_anchor['VWAP'], mode='lines', line=dict(color='#FF4B4B', width=2),
                            showlegend=False))
@@ -77,13 +78,107 @@ if ticker:
                 go.Scatter(x=df_anchor.index, y=df_anchor['Close'], mode='lines', line=dict(color='#2E86C1', width=2),
                            showlegend=False))
 
-            # --- CUSTOM LABELS ON RIGHT SIDE ---
-            # We add annotations for the last value of each line
+            # 3. Floating Labels on Right Side
             last = df_anchor.iloc[-1]
-            labels = [
-                (last['Close'], "Price", "#2E86C1"),
-                (last['VWAP'], "VWAP", "#FF4B4B"),
-                (last['Upper1'], "+1σ", "black"),
-                (last['Lower1'], "-1σ", "black"),
-                (last['Upper2'], "+2σ", "gray"),
-                (
+
+
+            # Helper to add annotation safely
+            def add_label(val, text, color):
+                fig.add_annotation(
+                    x=1.0, xanchor="left", xref="paper",
+                    y=val, yanchor="middle",
+                    text=f"{text} {val:.2f}",
+                    showarrow=False,
+                    font=dict(size=10, color=color),
+                    align="left"
+                )
+
+
+            add_label(last['Close'], "Price", "#2E86C1")
+            add_label(last['VWAP'], "VWAP", "#FF4B4B")
+            add_label(last['Upper1'], "+1σ", "black")
+            add_label(last['Lower1'], "-1σ", "black")
+            add_label(last['Upper2'], "+2σ", "gray")
+            add_label(last['Lower2'], "-2σ", "gray")
+
+            # Layout: Left Axis, Right Margin for labels
+            fig.update_layout(
+                height=450,
+                margin=dict(l=0, r=70, t=10, b=0),
+                template="plotly_white",
+                xaxis=dict(showgrid=False),
+                yaxis=dict(showgrid=True, gridcolor='#f0f0f0', side="left")
+            )
+
+            st.plotly_chart(fig, use_container_width=True, config={'staticPlot': True})
+
+        else:
+            st.error("Data Error: Missing Columns")
+    else:
+        st.error("No Data")
+
+# ==========================================
+# SECTION 2: INTELLIGENT NOTES
+# ==========================================
+st.divider()
+
+try:
+    # 1. Load Data
+    existing_data = conn.read(worksheet="Sheet1", usecols=[0, 1, 2], ttl=0)
+    existing_data = existing_data.dropna(how="all")
+    # Enforce string types
+    existing_data['Date'] = existing_data['Date'].astype(str)
+    existing_data['Ticker'] = existing_data['Ticker'].astype(str)
+    existing_data['Note'] = existing_data['Note'].astype(str)
+
+    # 2. Logic: Split Data
+    current_ticker_df = existing_data[existing_data['Ticker'] == ticker].copy()
+    other_tickers_df = existing_data[existing_data['Ticker'] != ticker].copy()
+
+    col_edit, col_add = st.columns([2, 1])
+
+    # 3. The Editor (View & Delete)
+    with col_edit:
+        st.caption(f"History for {ticker} (Select row + Delete key to remove)")
+        edited_df = st.data_editor(
+            current_ticker_df,
+            num_rows="dynamic",
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Date": st.column_config.TextColumn("Date", disabled=True),
+                "Ticker": st.column_config.TextColumn("Ticker", disabled=True),
+                "Note": st.column_config.TextColumn("Note", width="large")
+            }
+        )
+
+        if st.button("Sync Changes", type="primary"):
+            final_df = pd.concat([other_tickers_df, edited_df], ignore_index=True)
+            conn.update(worksheet="Sheet1", data=final_df)
+            st.toast("Updated!")
+            st.rerun()
+
+    # 4. Add New Note (Big Text Area)
+    with col_add:
+        with st.form("new_note"):
+            st.caption("New Entry")
+            new_txt = st.text_area("Content", height=150, label_visibility="collapsed")
+            if st.form_submit_button("Add Note"):
+                if new_txt:
+                    today = datetime.date.today().strftime("%Y-%m-%d")
+                    new_row = pd.DataFrame([{"Date": today, "Ticker": ticker, "Note": new_txt}])
+                    # Save immediately
+                    final_df = pd.concat([other_tickers_df, edited_df, new_row], ignore_index=True)
+                    conn.update(worksheet="Sheet1", data=final_df)
+                    st.toast("Saved!")
+                    st.rerun()
+
+    # 5. Reading Mode (Better for long text)
+    if not current_ticker_df.empty:
+        with st.expander("Reading Mode (Clean View)", expanded=False):
+            for i, row in current_ticker_df.iterrows():
+                st.markdown(f"**{row['Date']}**")
+                st.info(row['Note'])
+
+except Exception as e:
+    st.error(f"Connecting to Brain... ({e})")
