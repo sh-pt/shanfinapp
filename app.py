@@ -56,7 +56,6 @@ if ticker:
             fig = go.Figure()
 
             # 1. Bands (Background) - No Legend
-            # We add them individually to avoid the syntax error from before
             fig.add_trace(
                 go.Scatter(x=df_anchor.index, y=df_anchor['Lower2'], mode='lines', line=dict(width=0), showlegend=False,
                            hoverinfo='skip'))
@@ -82,7 +81,6 @@ if ticker:
             last = df_anchor.iloc[-1]
 
 
-            # Helper to add annotation safely
             def add_label(val, text, color):
                 fig.add_annotation(
                     x=1.0, xanchor="left", xref="paper",
@@ -94,14 +92,16 @@ if ticker:
                 )
 
 
+            # --- COLOR UPDATE HERE ---
             add_label(last['Close'], "Price", "#2E86C1")
             add_label(last['VWAP'], "VWAP", "#FF4B4B")
-            add_label(last['Upper1'], "+1σ", "black")
-            add_label(last['Lower1'], "-1σ", "black")
+            # Changed 1std to "gray" to match 2std
+            add_label(last['Upper1'], "+1σ", "gray")
+            add_label(last['Lower1'], "-1σ", "gray")
             add_label(last['Upper2'], "+2σ", "gray")
             add_label(last['Lower2'], "-2σ", "gray")
 
-            # Layout: Left Axis, Right Margin for labels
+            # Layout
             fig.update_layout(
                 height=450,
                 margin=dict(l=0, r=70, t=10, b=0),
@@ -126,12 +126,11 @@ try:
     # 1. Load Data
     existing_data = conn.read(worksheet="Sheet1", usecols=[0, 1, 2], ttl=0)
     existing_data = existing_data.dropna(how="all")
-    # Enforce string types
     existing_data['Date'] = existing_data['Date'].astype(str)
     existing_data['Ticker'] = existing_data['Ticker'].astype(str)
     existing_data['Note'] = existing_data['Note'].astype(str)
 
-    # 2. Logic: Split Data
+    # 2. Split Data
     current_ticker_df = existing_data[existing_data['Ticker'] == ticker].copy()
     other_tickers_df = existing_data[existing_data['Ticker'] != ticker].copy()
 
@@ -139,13 +138,16 @@ try:
 
     # 3. The Editor (View & Delete)
     with col_edit:
-        st.caption(f"History for {ticker} (Select row + Delete key to remove)")
+        st.caption(f"History for {ticker} (Select left edge + Delete key to remove)")
+
         edited_df = st.data_editor(
             current_ticker_df,
             num_rows="dynamic",
             use_container_width=True,
-            hide_index=True,
+            hide_index=True,  # Standard hide
             column_config={
+                # --- HIDES THE UGLY '0' COLUMN ---
+                "_index": st.column_config.Column(hidden=True),
                 "Date": st.column_config.TextColumn("Date", disabled=True),
                 "Ticker": st.column_config.TextColumn("Ticker", disabled=True),
                 "Note": st.column_config.TextColumn("Note", width="large")
@@ -158,7 +160,7 @@ try:
             st.toast("Updated!")
             st.rerun()
 
-    # 4. Add New Note (Big Text Area)
+    # 4. Add New Note
     with col_add:
         with st.form("new_note"):
             st.caption("New Entry")
@@ -167,13 +169,12 @@ try:
                 if new_txt:
                     today = datetime.date.today().strftime("%Y-%m-%d")
                     new_row = pd.DataFrame([{"Date": today, "Ticker": ticker, "Note": new_txt}])
-                    # Save immediately
                     final_df = pd.concat([other_tickers_df, edited_df, new_row], ignore_index=True)
                     conn.update(worksheet="Sheet1", data=final_df)
                     st.toast("Saved!")
                     st.rerun()
 
-    # 5. Reading Mode (Better for long text)
+    # 5. Reading Mode
     if not current_ticker_df.empty:
         with st.expander("Reading Mode (Clean View)", expanded=False):
             for i, row in current_ticker_df.iterrows():
