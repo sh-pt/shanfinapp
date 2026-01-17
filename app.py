@@ -17,7 +17,8 @@ col1, col2 = st.columns(2)
 with col1:
     ticker = st.text_input("Ticker", value="NVDA").upper()
 with col2:
-    anchor_date = st.date_input("Anchor", value=datetime.date(2024, 1, 1))
+    # UPDATED: Default date set to 2025-01-01
+    anchor_date = st.date_input("Anchor", value=datetime.date(2025, 1, 1))
 
 # ==========================================
 # SECTION 1: THE CHART
@@ -55,7 +56,7 @@ if ticker:
             # Visualization
             fig = go.Figure()
 
-            # 1. Bands (Background) - No Legend
+            # 1. Bands (Background)
             fig.add_trace(
                 go.Scatter(x=df_anchor.index, y=df_anchor['Lower2'], mode='lines', line=dict(width=0), showlegend=False,
                            hoverinfo='skip'))
@@ -92,10 +93,8 @@ if ticker:
                 )
 
 
-            # --- COLOR UPDATE HERE ---
             add_label(last['Close'], "Price", "#2E86C1")
             add_label(last['VWAP'], "VWAP", "#FF4B4B")
-            # Changed 1std to "gray" to match 2std
             add_label(last['Upper1'], "+1σ", "gray")
             add_label(last['Lower1'], "-1σ", "gray")
             add_label(last['Upper2'], "+2σ", "gray")
@@ -144,10 +143,8 @@ try:
             current_ticker_df,
             num_rows="dynamic",
             use_container_width=True,
-            hide_index=True,  # Standard hide
+            hide_index=True,
             column_config={
-                # --- HIDES THE UGLY '0' COLUMN ---
-                "_index": st.column_config.Column(hidden=True),
                 "Date": st.column_config.TextColumn("Date", disabled=True),
                 "Ticker": st.column_config.TextColumn("Ticker", disabled=True),
                 "Note": st.column_config.TextColumn("Note", width="large")
